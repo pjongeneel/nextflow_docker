@@ -11,7 +11,7 @@ phases:
       - echo Logging in to Amazon ECR...
       - aws --version
       - $(aws ecr get-login --region us-west-1 --no-include-email)
-      - REPOSITORY_URI=935013742570.dkr.ecr.us-west-1.amazonaws.com/basic_bfx
+      - REPOSITORY_URI=935013742570.dkr.ecr.us-west-1.amazonaws.com/nextflow_docker
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-8)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
   build:
