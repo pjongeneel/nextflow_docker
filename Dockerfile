@@ -16,14 +16,13 @@ RUN python3 -m pip install pip --upgrade \
     && python3 -m pip install boto3 --upgrade
 
 # Install Nextflow executable
-WORKDIR ~
+WORKDIR /home
 RUN wget -qO- https://get.nextflow.io | bash \
     && mv nextflow /usr/local/bin
 
 # Copy Nextflow wrapper script
-COPY nextflow.py ~/nextflow.py
+COPY nextflow.py /home/nextflow.py
 
 # Define container entry point
-WORKDIR ~
 ENTRYPOINT ["/home/nextflow.py"]
 CMD ["--help"]

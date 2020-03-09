@@ -1,5 +1,5 @@
 import argparse
-import json
+import boto3
 import logging
 import os
 import subprocess
@@ -19,16 +19,14 @@ def write_keys(config, fout, indent=0):
                 value = str(value).lower()
             fout.write(f"{key}={str(value)}\n")
     fout.write("\t" * (indent - 1))
-    fout.write("}\n")
+    if indent:
+        fout.write("}\n")
 
 
 def create_default_config(args):
-    os.environ["AWS_BATCH_JOB_ID"] = "g"
-    os.environ["AWS_BATCH_JOB_ATTEMPT"] = "a"
+    os.environ["AWS_BATCH_JOB_ID"] = "1"
+    os.environ["AWS_BATCH_JOB_ATTEMPT"] = "2"
     config = {
-        "manifest": {
-            "nextflowVersion": "19.10.0"
-        },
         "report": {
             "enabled": True
         },
@@ -46,9 +44,9 @@ def create_default_config(args):
             "executor": "awsbatch",
             "cache": "lenient",
             "queue": args.queue,
-            "errorStrategy": args.errorStrategy,
-            "maxErrors": int(args.maxErrors),
-            "publishDir": args.publishDir
+            "errorStrategy": args.error_strategy,
+            "maxErrors": int(args.max_errors),
+            "publishDir": args.publish_dir
         },
         "aws": {
             "batch": {
@@ -68,8 +66,10 @@ def create_default_config(args):
         write_keys(config, fout)
 
 
-def run_nextflow(project, params):
-    command = ["/usr/local/bin/nextflow", "run", project, "-c", params]
+def run_nextflow(project, params, version="latest"):
+    if version != "latest":
+        os.environ["NXF_VER"] = version
+    command = ["/usr/local/bin/nextflow", "run", project, "-c", params, "-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-latest"]
     logging.info("Command: {0}".format(" ".join(command)))
     # try:
     #     subprocess.run(command, check=True)
@@ -86,16 +86,17 @@ if __name__ == "__main__":
     # Define arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--queue", default="arn:aws:batch:us-west-1:935013742570:job-queue/JobQueue-8992da5e37f02fb", help="AWS Batch queue arn to use.")
-    parser.add_argument("--errorStrategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
-    parser.add_argument("--maxErrors", action="store", default=1, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
+    parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
+    parser.add_argument("--max_errors", action="store", default=1, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
-    parser.add_argument("--publishDir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
+    parser.add_argument("--publish_dir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
     parser.add_argument("--region", action="store", default="us-west-1", help="AWS region to deploy to.")
-    parser.add_argument("--run_config", action="store", default="run.config", help="File with nextflow parameters specific to this workflow")
+    parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
+    parser.add_argument("--run_config", action="store", default="nextflow.config", help="File with nextflow parameters specific to this workflow")
     args = parser.parse_args()
 
     # Write default nextflow configuration file
     create_default_config(args)
 
     # Run nextflow executable given the project and project parameters
-    run_nextflow(args.project, args.run_config)
+    run_nextflow(args.project, args.run_config, args.nextflow_version)
