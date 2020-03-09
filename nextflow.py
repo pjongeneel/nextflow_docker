@@ -66,10 +66,21 @@ def create_default_config(args):
         write_keys(config, fout)
 
 
-def run_nextflow(project, params, version="latest"):
-    if version != "latest":
-        os.environ["NXF_VER"] = version
-    command = ["/usr/local/bin/nextflow", "run", project, "-c", params, "-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-latest"]
+def run_nextflow(project, revision, params, nextflow_version="latest"):
+    # Specify the correct Nextflow version to use
+    if nextflow_version != "latest":
+        os.environ["NXF_VER"] = nextflow_version
+
+    # Define project specification options
+    project_specification = [project, "-revision", revision, "-latest"]
+
+    # Define sample / workflow specific parameters
+    workflow_params = ["-c", params]
+
+    # Define optional parameters
+    debug_params = ["-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-with-dag"]
+
+    command = ["/usr/local/bin/nextflow", "run"] + project_specification + workflow_params + debug_params
     logging.info("Command: {0}".format(" ".join(command)))
     # try:
     #     subprocess.run(command, check=True)
@@ -89,6 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
     parser.add_argument("--max_errors", action="store", default=1, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
+    parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
     parser.add_argument("--publish_dir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
     parser.add_argument("--region", action="store", default="us-west-1", help="AWS region to deploy to.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
