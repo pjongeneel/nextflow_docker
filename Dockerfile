@@ -11,13 +11,18 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install boto3
+# Install python dependencies 
 RUN python3 -m pip install pip --upgrade \
     && python3 -m pip install boto3 --upgrade
 
-RUN wget -qO- https://get.nextflow.io | bash
-RUN mv nextflow /usr/local/bin
-COPY nextflow.aws.sh /opt/bin/nextflow.aws.sh
-RUN chmod +x /opt/bin/nextflow.aws.sh
-WORKDIR /opt/work
-ENTRYPOINT ["/opt/bin/nextflow.aws.sh"]
+# Install Nextflow executable
+WORKDIR /home
+RUN wget -qO- https://get.nextflow.io | bash \
+    && mv nextflow /usr/local/bin
+
+# Copy Nextflow wrapper script
+COPY nextflow.py /home/nextflow.py
+
+# Define container entry point
+ENTRYPOINT ["/home/nextflow.py"]
+CMD ["--help"]
