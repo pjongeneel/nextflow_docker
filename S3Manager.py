@@ -11,8 +11,8 @@ from botocore.errorfactory import ClientError
 
 class S3Manager:
 
-    def __init__(self, aws_access_key_id, aws_secret_access_key):
-        self.client = boto3.client("s3", aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+    def __init__(self):
+        self.client = boto3.client("s3")
 
     def exists_on_s3(self, bucket, key, empty_ok=True):
         try:
