@@ -46,7 +46,11 @@ def create_default_config(args):
             "queue": args.queue,
             "errorStrategy": args.error_strategy,
             "maxErrors": int(args.max_errors),
-            "publishDir": args.publish_dir
+            "publishDir": {
+                "path": args.publish_dir,
+                "mode": "symlink",
+                "enabled": True
+            }
         },
         "aws": {
             "batch": {
@@ -59,28 +63,32 @@ def create_default_config(args):
             "queueSize": 5000,
             "submitRateLimit": "1 sec"
         },
-        "workDir": os.path.join("/nextflow", "runs", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
+        "workDir": os.path.join("/nextflow", "work")
     }
 
+    # os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"]
     with open("nextflow.config", "w") as fout:
         write_keys(config, fout)
 
 
-def run_nextflow(project, revision, params, nextflow_version="latest"):
+def run_nextflow(args):
     # Specify the correct Nextflow version to use
-    if nextflow_version != "latest":
-        os.environ["NXF_VER"] = nextflow_version
+    if args.nextflow_version != "latest":
+        os.environ["NXF_VER"] = args.nextflow_version
 
-    # Define project specification options
-    project_specification = [project, "-revision", revision, "-latest"]
+    # Define project definition options
+    project_definition = [args.project, "-revision", args.revision, "-latest"]
 
     # Define sample / workflow specific parameters
-    workflow_params = ["-c", params]
+    workflow_params = ["-c", args.run_config]
 
     # Define optional parameters
-    debug_params = ["-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-with-dag"]
+    debug_params = []
+    if args.no_cache:
+        debug_params += ["-resume"]
+    debug_params += ["-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-with-dag"]
 
-    command = ["/usr/local/bin/nextflow", "run"] + project_specification + workflow_params + debug_params
+    command = ["/usr/local/bin/nextflow", "run"] + project_definition + workflow_params + debug_params
     logging.info("Command: {0}".format(" ".join(command)))
     # try:
     #     subprocess.run(command, check=True)
@@ -103,6 +111,7 @@ if __name__ == "__main__":
     parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
     parser.add_argument("--publish_dir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
     parser.add_argument("--region", action="store", default="us-west-1", help="AWS region to deploy to.")
+    parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
     parser.add_argument("--run_config", action="store", default="nextflow.config", help="File with nextflow parameters specific to this workflow")
     args = parser.parse_args()
@@ -111,4 +120,4 @@ if __name__ == "__main__":
     create_default_config(args)
 
     # Run nextflow executable given the project and project parameters
-    run_nextflow(args.project, args.run_config, args.nextflow_version)
+    run_nextflow(args)
