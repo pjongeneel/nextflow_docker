@@ -1,24 +1,37 @@
+# Define logger
+import logging
+logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+log = logging.getLogger(__name__)
+
+
+# Imports
 import argparse
-import boto3
+import json
 import logging
 import os
 import re
 import subprocess
+from S3Manager import S3Manager
 
 
 def download_configs(args):
+    # Create S3 manager object for downloading configuration files
+    s3_manager = S3Manager()
+
+    # Define root dir to put config files in
     os.environ["AWS_BATCH_JOB_ID"] = "1"
     os.environ["AWS_BATCH_JOB_ATTEMPT"] = "2"
     root = os.path.join("/nextflow/master", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
-    targets = []
-    client = boto3.client("s3", aws_access_key_id="AKIA5TMZJO7VPGFQWGIJ", aws_secret_access_key="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")
+
+    # Download each config file to root dir
+    paths = []
     for conf in args.configs:
-        assert conf.startswith("s3://")
-        bucket, key = re.findall(r"s3://(.+?)/(.+)", conf)
-        target = os.path.join(root, key)
-        client.download_file(bucket, key, target)
-        targets.append(target)
-    return targets
+        assert conf.startswith("s3://")  # Must be an S3 path for now
+        bucket, key = re.findall(r"s3://(.+?)/(.+)", conf)[0]
+        path = os.path.join(root, key)
+        s3_manager.download_file(path, bucket, key, overwrite=True)
+        paths.append(path)
+    return paths
 
 
 def write_keys(config, fout, indent=0):
@@ -26,14 +39,14 @@ def write_keys(config, fout, indent=0):
         value = config[key]
         fout.write("\t" * indent)
         if type(value) == dict:
-            fout.write(f"{key} = {{\n")
+            fout.write(f"{key} {{\n")
             write_keys(value, fout, indent + 1)
         else:
             if type(value) == str:
                 value = f"'{value}'"
             elif type(value) == bool:
                 value = str(value).lower()
-            fout.write(f"{key}={str(value)}\n")
+            fout.write(f"{key} = {str(value)}\n")
     fout.write("\t" * (indent - 1))
     if indent:
         fout.write("}\n")
@@ -75,7 +88,7 @@ def create_default_config(args):
         },
         "executor": {
             "queueSize": 5000,
-            "submitRateLimit": "1 3sec"
+            "submitRateLimit": "1 sec"
         },
         "workDir": os.path.join("/nextflow", "work")
     }
@@ -85,26 +98,40 @@ def create_default_config(args):
 
 
 def run_nextflow(args):
+    # Define executable
+    command = ["/usr/local/bin/nextflow"]
+
     # Specify the correct Nextflow version to use
     if args.nextflow_version != "latest":
         os.environ["NXF_VER"] = args.nextflow_version
 
-    # Define project definition options
-    project_definition = [args.project, "-revision", args.revision, "-latest"]
-
     # Define sample / workflow specific parameters
-    workflow_params = []
+    config_declarator = "-C" if args.explicit_configs else "-c"
     for config in args.configs:
-        workflow_params.extend(["-c", config])
+        command.extend([config_declarator, config])
+
+    # Define project definition options
+    command.extend([
+        "run",
+        args.project,
+        "-revision",
+        args.revision,
+        "-latest"
+    ])
 
     # Define optional parameters
-    debug_params = []
-    if args.no_cache:
-        debug_params.extend(["-resume"])
-    debug_params.extend(["-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-with-dag"])
+    if not args.no_cache:
+        command.extend(["-resume"])
+    command.extend([
+            "-with-trace",
+            "-with-report",
+            "-with-timeline",
+            "-with-weblog",
+            "-with-dag"
+    ])
 
-    command = ["/usr/local/bin/nextflow", "run"] + project_definition + workflow_params + debug_params
-    logging.info("Command: {0}".format(" ".join(command)))
+    # Run command
+    log.info("Command: {0}".format(" ".join(command)))
     subprocess.run(command, check=True)
     # try:
     # subprocess.run(command, check=True)
@@ -115,8 +142,8 @@ def run_nextflow(args):
 
 if __name__ == "__main__":
     # Init logger
-    logging.basicConfig(format="%(asctime)s %(message)s", level=logging.DEBUG)
-    logging.info("Entering Nextflow wrapper script")
+    # logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+    log.info("Entering Nextflow wrapper script")
 
     # Define arguments
     parser = argparse.ArgumentParser()
@@ -130,13 +157,15 @@ if __name__ == "__main__":
     parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
     parser.add_argument("--configs", action="store", nargs="*", default=["s3://pipeline.poc/nextflow/sample.config"], help="File(s) with nextflow parameters specific to this workflow")
+    parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
     args = parser.parse_args()
 
     # Write default nextflow configuration file
     create_default_config(args)
 
     # Download any additional configuration files (parameters, etc)
-    args.configs = download_configs(args)
+    if args.configs:
+        args.configs = download_configs(args)
 
     # Run nextflow executable given the project and project parameters
     run_nextflow(args)
