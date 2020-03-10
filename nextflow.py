@@ -2,7 +2,23 @@ import argparse
 import boto3
 import logging
 import os
+import re
 import subprocess
+
+
+def download_configs(args):
+    os.environ["AWS_BATCH_JOB_ID"] = "1"
+    os.environ["AWS_BATCH_JOB_ATTEMPT"] = "2"
+    root = os.path.join("/nextflow/master", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
+    targets = []
+    client = boto3.client("s3", aws_access_key_id="AKIA5TMZJO7VPGFQWGIJ", aws_secret_access_key="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")
+    for conf in args.configs:
+        assert conf.startswith("s3://")
+        bucket, key = re.findall(r"s3://(.+?)/(.+)", conf)
+        target = os.path.join(root, key)
+        client.download_file(bucket, key, target)
+        targets.append(target)
+    return targets
 
 
 def write_keys(config, fout, indent=0):
@@ -24,8 +40,6 @@ def write_keys(config, fout, indent=0):
 
 
 def create_default_config(args):
-    os.environ["AWS_BATCH_JOB_ID"] = "1"
-    os.environ["AWS_BATCH_JOB_ATTEMPT"] = "2"
     config = {
         "report": {
             "enabled": True
@@ -61,12 +75,11 @@ def create_default_config(args):
         },
         "executor": {
             "queueSize": 5000,
-            "submitRateLimit": "1 sec"
+            "submitRateLimit": "1 3sec"
         },
         "workDir": os.path.join("/nextflow", "work")
     }
 
-    # os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"]
     with open("nextflow.config", "w") as fout:
         write_keys(config, fout)
 
@@ -80,18 +93,21 @@ def run_nextflow(args):
     project_definition = [args.project, "-revision", args.revision, "-latest"]
 
     # Define sample / workflow specific parameters
-    workflow_params = ["-c", args.run_config]
+    workflow_params = []
+    for config in args.configs:
+        workflow_params.extend(["-c", config])
 
     # Define optional parameters
     debug_params = []
     if args.no_cache:
-        debug_params += ["-resume"]
-    debug_params += ["-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-with-dag"]
+        debug_params.extend(["-resume"])
+    debug_params.extend(["-with-trace", "-with-report", "-with-timeline", "-with-weblog", "-with-dag"])
 
     command = ["/usr/local/bin/nextflow", "run"] + project_definition + workflow_params + debug_params
     logging.info("Command: {0}".format(" ".join(command)))
+    subprocess.run(command, check=True)
     # try:
-    #     subprocess.run(command, check=True)
+    # subprocess.run(command, check=True)
     # except subprocess.CalledProcessError as e:
     #     logging.error("OH NO")
     #     raise e
@@ -113,11 +129,14 @@ if __name__ == "__main__":
     parser.add_argument("--region", action="store", default="us-west-1", help="AWS region to deploy to.")
     parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
-    parser.add_argument("--run_config", action="store", default="nextflow.config", help="File with nextflow parameters specific to this workflow")
+    parser.add_argument("--configs", action="store", nargs="*", default=["s3://pipeline.poc/nextflow/sample.config"], help="File(s) with nextflow parameters specific to this workflow")
     args = parser.parse_args()
 
     # Write default nextflow configuration file
     create_default_config(args)
+
+    # Download any additional configuration files (parameters, etc)
+    args.configs = download_configs(args)
 
     # Run nextflow executable given the project and project parameters
     run_nextflow(args)
