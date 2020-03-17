@@ -1,9 +1,3 @@
-# Define logger
-import logging
-logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
-log = logging.getLogger(__name__)
-
-
 # Imports
 import argparse
 import json
@@ -11,12 +5,17 @@ import logging
 import os
 import re
 import subprocess
-from S3Manager import S3Manager
+from S3Manager import S3
+
+# Define logger
+import logging
+logging.basicConfig(format="%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s", level=logging.INFO)
+log = logging.getLogger(__name__)
 
 
 def download_configs(args):
     # Create S3 manager object for downloading configuration files
-    s3_manager = S3Manager()
+    s3_manager = S3(region=args.region)
 
     # Define root dir to put config files in
     os.environ["AWS_BATCH_JOB_ID"] = "1"
@@ -84,13 +83,16 @@ def create_default_config(args):
                 "cliPath": "/miniconda/bin/aws",
                 "volumes": ["/resource", "/nextflow"]
             },
-            "region": args.region
+            "region": args.region,
+            "client": {
+                "maxConnections": 20
+            }
         },
         "executor": {
             "queueSize": 5000,
             "submitRateLimit": "1 sec"
         },
-        "workDir": os.path.join("/nextflow", "work")
+        "workDir": args.work_bucket
     }
 
     with open("nextflow.config", "w") as fout:
@@ -110,6 +112,12 @@ def run_nextflow(args):
     for config in args.configs:
         command.extend([config_declarator, config])
 
+    # Print config
+    print_command = command + ["config"]
+    log.info("Printing configuration...")
+    log.info("Command: {0}".format(" ".join(print_command)))
+    subprocess.run(print_command, check=True)
+
     # Define project definition options
     command.extend([
         "run",
@@ -123,21 +131,16 @@ def run_nextflow(args):
     if not args.no_cache:
         command.extend(["-resume"])
     command.extend([
-            "-with-trace",
-            "-with-report",
-            "-with-timeline",
-            "-with-weblog",
-            "-with-dag"
+        "-with-trace",
+        "-with-report",
+        "-with-timeline",
+        "-with-weblog",
+        "-with-dag"
     ])
 
     # Run command
     log.info("Command: {0}".format(" ".join(command)))
     subprocess.run(command, check=True)
-    # try:
-    # subprocess.run(command, check=True)
-    # except subprocess.CalledProcessError as e:
-    #     logging.error("OH NO")
-    #     raise e
 
 
 if __name__ == "__main__":
@@ -153,6 +156,7 @@ if __name__ == "__main__":
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
     parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
     parser.add_argument("--publish_dir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
+    parser.add_argument("--work_bucket", action="store", default="s3://pipeline.poc/nextflow_docker", help="S3 bucket to use for work dir")
     parser.add_argument("--region", action="store", default="us-west-1", help="AWS region to deploy to.")
     parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
@@ -160,12 +164,12 @@ if __name__ == "__main__":
     parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
     args = parser.parse_args()
 
-    # Write default nextflow configuration file
-    create_default_config(args)
-
     # Download any additional configuration files (parameters, etc)
     if args.configs:
         args.configs = download_configs(args)
+
+    # Write default nextflow configuration file
+    create_default_config(args)
 
     # Run nextflow executable given the project and project parameters
     run_nextflow(args)
