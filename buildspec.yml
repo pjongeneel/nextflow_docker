@@ -10,6 +10,11 @@ phases:
       - aws --version
       - $(aws ecr get-login --region us-west-1 --no-include-email)
       - REPOSITORY_URI=935013742570.dkr.ecr.us-west-1.amazonaws.com/nextflow_docker
+      - echo AWS_REGION:${AWS_REGION}
+      - REPO=`basename ${CODEBUILD_SOURCE_REPO_URL} .git`
+      - echo REPO:${REPO}
+      - echo CODEBUILD_WEBHOOK_ACTOR_ACCOUNT_ID:${CODEBUILD_WEBHOOK_ACTOR_ACCOUNT_ID}
+      - echo CODEBUILD_BUILD_ARN:${CODEBUILD_BUILD_ARN}
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-8)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
   build:
