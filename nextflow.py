@@ -1,6 +1,5 @@
 # Imports
 import argparse
-import json
 import logging
 import os
 import re
@@ -13,21 +12,17 @@ logging.basicConfig(format="%(asctime)s — %(name)s — %(levelname)s — %(fun
 log = logging.getLogger(__name__)
 
 
-def download_configs(args):
+def download_configs(args, root_dir):
     # Create S3 manager object for downloading configuration files
     s3_manager = S3(region=args.region)
-
-    # Define root dir to put config files in
-    os.environ["AWS_BATCH_JOB_ID"] = "1"
-    os.environ["AWS_BATCH_JOB_ATTEMPT"] = "2"
-    root = os.path.join("/nextflow/master", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
 
     # Download each config file to root dir
     paths = []
     for conf in args.configs:
         assert conf.startswith("s3://")  # Must be an S3 path for now
         bucket, key = re.findall(r"s3://(.+?)/(.+)", conf)[0]
-        path = os.path.join(root, key)
+        path = os.path.join(root_dir, key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         s3_manager.download_file(path, bucket, key, overwrite=True)
         paths.append(path)
     return paths
@@ -51,7 +46,7 @@ def write_keys(config, fout, indent=0):
         fout.write("}\n")
 
 
-def create_default_config(args):
+def create_default_config(args, root_dir):
     config = {
         "report": {
             "enabled": True
@@ -95,7 +90,7 @@ def create_default_config(args):
         "workDir": args.work_bucket
     }
 
-    with open("nextflow.config", "w") as fout:
+    with open(os.path.join(root_dir, "nextflow.config"), "w") as fout:
         write_keys(config, fout)
 
 
@@ -115,7 +110,7 @@ def run_nextflow(args):
     # Print config
     print_command = command + ["config"]
     log.info("Printing configuration...")
-    log.info("Command: {0}".format(" ".join(print_command)))
+    log.info(f"Running command: {' '.join(print_command)}")
     subprocess.run(print_command, check=True)
 
     # Define project definition options
@@ -139,7 +134,7 @@ def run_nextflow(args):
     ])
 
     # Run command
-    log.info("Command: {0}".format(" ".join(command)))
+    log.info(f"Running command: {' '.join(command)}")
     subprocess.run(command, check=True)
 
 
@@ -164,12 +159,19 @@ if __name__ == "__main__":
     parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
     args = parser.parse_args()
 
+    # Define and create nextflow run directory
+    os.environ["AWS_BATCH_JOB_ID"] = "1"
+    os.environ["AWS_BATCH_JOB_ATTEMPT"] = "2"
+    root_dir = os.path.join("/nextflow/jobs", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
+    os.makedirs(root_dir, exist_ok=False)
+    os.chdir(root_dir)
+
     # Download any additional configuration files (parameters, etc)
     if args.configs:
-        args.configs = download_configs(args)
+        args.configs = download_configs(args, root_dir)
 
     # Write default nextflow configuration file
-    create_default_config(args)
+    create_default_config(args, root_dir)
 
     # Run nextflow executable given the project and project parameters
     run_nextflow(args)
