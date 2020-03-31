@@ -11,6 +11,10 @@ phases:
       - $(aws ecr get-login --region ${AWS_REGION} --no-include-email)
       - echo Establishing ECR REPOSITORY_URI
       - ACCOUNT_ID=`echo ${ARN} | cut -f5 -d':'`
+      - echo ARN ${ARN}
+      - echo ARN `echo ${ARN}`
+      - echo ARN `echo ${ARN} | cut -f2 -d':'`
+      - echo ARN `echo ${ARN} | cut -f2 -d":"`
       - REPO=`basename ${CODEBUILD_SOURCE_REPO_URL} .git`
       - REPOSITORY_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO}
       - echo REPOSITORY_URI:${REPOSITORY_URI}
