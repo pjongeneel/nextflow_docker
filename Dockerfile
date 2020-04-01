@@ -25,5 +25,5 @@ COPY nextflow.py /home/nextflow.py
 COPY S3Manager.py /home/S3Manager.py
 
 # Define container entry point
-ENTRYPOINT ["/home/nextflow.py"]
+ENTRYPOINT ["python3 /home/nextflow.py"]
 CMD ["--help"]
