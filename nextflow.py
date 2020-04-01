@@ -151,11 +151,11 @@ if __name__ == "__main__":
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
     parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
     parser.add_argument("--publish_dir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
-    parser.add_argument("--work_bucket", action="store", default="s3://pipeline.poc/nextflow_docker", help="S3 bucket to use for work dir")
+    parser.add_argument("--work_bucket", action="store", default="s3://patrick.poc/nextflow_work", help="S3 bucket to use for work dir")
     parser.add_argument("--region", action="store", default="us-west-1", help="AWS region to deploy to.")
     parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
-    parser.add_argument("--configs", action="store", nargs="*", default=["s3://pipeline.poc/nextflow/sample.config"], help="File(s) with nextflow parameters specific to this workflow")
+    parser.add_argument("--configs", action="store", nargs="*", default=["s3://patrick.poc/nextflow/sample.config"], help="File(s) with nextflow parameters specific to this workflow")
     parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
     args = parser.parse_args()
 
@@ -166,7 +166,6 @@ if __name__ == "__main__":
     except KeyError:
         root_dir = os.path.join("/nextflow/jobs/test")
         os.makedirs(root_dir, exist_ok=True)
-
     os.chdir(root_dir)
 
     # Download any additional configuration files (parameters, etc)
