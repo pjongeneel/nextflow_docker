@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
     # Define arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--queue", default="arn:aws:batch:us-west-1:935013742570:job-queue/JobQueue-8992da5e37f02fb", help="AWS Batch queue arn to use.")
+    parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-b41f70740f8eab7", help="AWS Batch queue arn to use.")
     parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
     parser.add_argument("--max_errors", action="store", default=1, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
@@ -160,10 +160,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define and create nextflow run directory
-    os.environ["AWS_BATCH_JOB_ID"] = "1"
-    os.environ["AWS_BATCH_JOB_ATTEMPT"] = "2"
-    root_dir = os.path.join("/nextflow/jobs", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
-    os.makedirs(root_dir, exist_ok=False)
+    try:
+        root_dir = os.path.join("/nextflow/jobs", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
+        os.makedirs(root_dir, exist_ok=False)
+    except KeyError:
+        root_dir = os.path.join("/nextflow/jobs/test")
+        os.makedirs(root_dir, exist_ok=True)
+
     os.chdir(root_dir)
 
     # Download any additional configuration files (parameters, etc)
