@@ -58,15 +58,12 @@ def create_default_config(args, root_dir):
             "enabled": True,
             "raw": True
         },
-        "weblog": {
-            "enabled": True
-        },
         "process": {
             "executor": "awsbatch",
             "cache": "lenient",
             "queue": args.queue,
             "errorStrategy": args.error_strategy,
-            "maxErrors": int(args.max_errors),
+            "maxRetries": int(args.max_retries),
             "publishDir": {
                 "path": args.publish_dir,
                 "mode": "symlink",
@@ -129,7 +126,6 @@ def run_nextflow(args):
         "-with-trace",
         "-with-report",
         "-with-timeline",
-        "-with-weblog",
         "-with-dag"
     ])
 
@@ -147,7 +143,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-b41f70740f8eab7", help="AWS Batch queue arn to use.")
     parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
-    parser.add_argument("--max_errors", action="store", default=1, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
+    parser.add_argument("--max_retries", action="store", default=1, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
     parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
     parser.add_argument("--publish_dir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
