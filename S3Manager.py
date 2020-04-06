@@ -3,6 +3,7 @@ import boto3
 import botocore
 import json
 import os
+import re
 import time
 
 # Define logger
@@ -16,10 +17,54 @@ def print_response(response):
     log.info(json.dumps(response, indent=2, default=str))
 
 
-class VPC:
+class AWSSession:
 
     def __init__(self, profile=None, region=None):
         self.session = boto3.Session(profile_name=profile, region_name=region)
+        self.profile = self.session.profile_name
+        self.region = self.session.region_name
+
+
+class Batch(AWSSession):
+    def __init__(self, profile=None, region=None):
+        super().__init__(profile, region)
+        self.client = self.session.client('batch')
+
+
+class ECR(AWSSession):
+
+    def __init__(self, profile=None, region=None):
+        super().__init__(profile, region)
+        self.client = self.session.client('ecr')
+
+    def create_registry(self, repo_name):
+        registry_name = re.findall(r"([^/]*)\.git", repo_name)[-1]
+        if not self.check_registry_exists(registry_name):
+            self.client.create_repository(
+                repositoryName=registry_name,
+                imageTagMutability='MUTABLE',
+                imageScanningConfiguration={
+                    'scanOnPush': False
+                }
+            )
+            log.debug(f"Created ECR registry {registry_name}")
+        else:
+            log.debug(f"ECR registry {registry_name} already exists: Skipping creation.")
+
+    def check_registry_exists(self, registry_name):
+        try:
+            self.client.describe_repositories(
+                repositoryNames=[registry_name]
+            )
+            return True
+        except botocore.errorfactory.ClientError:
+            return False
+
+
+class VPC(AWSSession):
+
+    def __init__(self, profile=None, region=None):
+        super().__init__(profile=profile, region=region)
         self.resource = self.session.resource("ec2")
 
     def get_vpc(self, vpc_id):
@@ -44,10 +89,10 @@ class VPC:
         return subnet_ids
 
 
-class Cloudformation:
+class Cloudformation(AWSSession):
 
     def __init__(self, profile=None, region=None):
-        self.session = boto3.Session(profile_name=profile, region_name=region)
+        super().__init__(profile=profile, region=region)
         self.client = self.session.client("cloudformation")
 
     def create_stack(self, stack_name, template, parameters=[], capabilities="CAPABILITY_NAMED_IAM", on_failure="ROLLBACK"):
@@ -63,12 +108,12 @@ class Cloudformation:
         print_response(response)
         return response
 
-    def delete_stack(self, *args, stack_name):
+    def delete_stack(self, stack_name):
         response = self.client.delete_stack(StackName=stack_name)
         print_response(response)
         return response
 
-    def describe_stack(self, *args, stack_name):
+    def describe_stack(self, stack_name):
         response = self.client.describe_stacks()
         stacks = [stack for stack in response['Stacks'] if stack_name == stack["StackName"]]
         response["Stacks"] = stacks
@@ -76,10 +121,10 @@ class Cloudformation:
         return response
 
 
-class S3:
+class S3(AWSSession):
 
     def __init__(self, profile=None, region=None):
-        self.session = boto3.Session(profile_name=profile, region_name=region)
+        super().__init__(profile=profile, region=region)
         self.client = self.session.client("s3")
 
     def exists_on_s3(self, bucket, key, empty_ok=True):
@@ -94,17 +139,20 @@ class S3:
         if overwrite or not self.exists_on_s3(bucket, key):
             start = time.time()
             self.client.upload_file(path, bucket, key)
-            log.debug(f"Upload complete in {int(time.time() - start)} seconds")
-        log.debug(f"Upload skipped")
+            log.debug(f"Upload complete in {int(time.time() - start)} seconds.")
+        else:
+            log.debug(f"Upload skipped.")
 
     def download_file(self, path, bucket, key, overwrite=True):
         log.info(f"Downloading s3://{bucket}/{key} to {path}")
         if overwrite or not os.path.exists(path):
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+            if os.path.dirname(path):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
             start = time.time()
             self.client.download_file(bucket, key, path)
-            log.debug(f"Download complete in {int(time.time() - start)} seconds")
-        log.debug(f"Download skipped")
+            log.debug(f"Download complete in {int(time.time() - start)} seconds.")
+        else:
+            log.debug(f"Download skipped.")
 
     def walk_s3_dir(self, bucket, key):
         assert (key.endswith("/") and not key.startswith("/"))
