@@ -1,5 +1,7 @@
 # Imports
 import argparse
+from datetime import datetime
+import json
 import logging
 import os
 import re
@@ -10,22 +12,6 @@ from S3Manager import S3
 import logging
 logging.basicConfig(format="%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
-
-
-def download_configs(args, root_dir):
-    # Create S3 manager object for downloading configuration files
-    s3_manager = S3(region=args.region)
-
-    # Download each config file to root dir
-    paths = []
-    for conf in args.configs:
-        assert conf.startswith("s3://")  # Must be an S3 path for now
-        bucket, key = re.findall(r"s3://(.+?)/(.+)", conf)[0]
-        path = os.path.join(root_dir, key)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        s3_manager.download_file(path, bucket, key, overwrite=True)
-        paths.append(path)
-    return paths
 
 
 def write_keys(config, fout, indent=0):
@@ -46,7 +32,8 @@ def write_keys(config, fout, indent=0):
         fout.write("}\n")
 
 
-def create_default_config(args, root_dir):
+def create_default_config(args):
+    # Setup config arguments
     config = {
         "report": {
             "enabled": True
@@ -87,51 +74,95 @@ def create_default_config(args, root_dir):
         "workDir": args.work_bucket
     }
 
-    with open(os.path.join(root_dir, "nextflow.config"), "w") as fout:
+    # Write config file
+    # try:
+    #     nextflow_config_path = f"{os.environ['AWS_BATCH_JOB_ID']}.{os.environ['AWS_BATCH_JOB_ATTEMPT']}.config"
+    # except KeyError:
+    #     nextflow_config_path = "nextflow.config"
+    # with open(nextflow_config_path, "w") as fout:
+    #     write_keys(config, fout)
+
+    with open("nextflow.config", "w") as fout:
         write_keys(config, fout)
+
+    with open("nextflow.json", "w") as fout:
+        json.dump(config, fout)
+
+
+def run_command(command):
+    log.info(f"Running command: {' '.join(command)}")
+    subprocess.run(command, check=True)
 
 
 def run_nextflow(args):
     # Define executable
-    command = ["/usr/local/bin/nextflow"]
+    executable = ["/usr/local/bin/nextflow"]
 
     # Specify the correct Nextflow version to use
     if args.nextflow_version != "latest":
         os.environ["NXF_VER"] = args.nextflow_version
 
-    # Define sample / workflow specific parameters
+    # Pull project
+    log.info("Pulling project repository")
+    run_command(
+        executable + [
+            "pull",
+            args.project,
+            "-revision",
+            args.revision
+        ]
+    )
+
+    # Define config arguments
     config_declarator = "-C" if args.explicit_configs else "-c"
     for config in args.configs:
-        command.extend([config_declarator, config])
+        executable.extend([config_declarator, config])
 
     # Print config
-    print_command = command + ["config"]
-    log.info("Printing configuration...")
-    log.info(f"Running command: {' '.join(print_command)}")
-    subprocess.run(print_command, check=True)
+    log.info("Printing configuration")
+    run_command(
+        executable + ["config"]
+    )
 
     # Define project definition options
-    command.extend([
+    executable.extend([
         "run",
         args.project,
         "-revision",
-        args.revision,
-        "-latest"
+        args.revision
     ])
 
     # Define optional parameters
     if not args.no_cache:
-        command.extend(["-resume"])
-    command.extend([
-        "-with-trace",
-        "-with-report",
-        "-with-timeline",
-        "-with-dag"
-    ])
+        executable.extend(["-resume"])
 
-    # Run command
-    log.info(f"Running command: {' '.join(command)}")
-    subprocess.run(command, check=True)
+    if args.generate_reports:
+        executable.extend([
+            "-with-trace",
+            "-with-report",
+            "-with-timeline",
+            "-with-dag"
+        ])
+
+    # Run worklow
+    log.info("Running workflow")
+    # run_command(executable)
+
+
+def download_configs(args, pipeline_dir):
+    # Create S3 manager object for downloading configuration files
+    s3_manager = S3(region=args.region)
+
+    # Download each config file to root dir
+    paths = []
+    for conf in args.configs:
+        assert conf.startswith("s3://")  # Must be an S3 path for now
+        bucket, key = re.findall(r"s3://(.+?)/(.+)", conf)[0]
+        path = os.path.join(pipeline_dir, key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        s3_manager.download_file(path, bucket, key, overwrite=True)
+        paths.append(path)
+    return paths
 
 
 if __name__ == "__main__":
@@ -141,35 +172,38 @@ if __name__ == "__main__":
 
     # Define arguments
     parser = argparse.ArgumentParser()
+    parser.add_argument("--workflow_id", required=True, help="Workflow ID.")
     parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-b41f70740f8eab7", help="AWS Batch queue arn to use.")
     parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
-    parser.add_argument("--max_retries", action="store", default=1, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
+    parser.add_argument("--max_retries", action="store", default=0, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
     parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
-    parser.add_argument("--publish_dir", action="store", default="/nextflow/outputs", help="Directory to copy outputs to.")
-    parser.add_argument("--work_bucket", action="store", default="s3://patrick.poc/nextflow_work", help="S3 bucket to use for work dir")
-    parser.add_argument("--region", action="store", default="us-west-2", help="AWS region to deploy to.")
-    parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run.")
+    parser.add_argument("--publish_dir", action="store", help="Directory to copy outputs to. Automatically set if left blank.")
+    parser.add_argument("--work_bucket", action="store", default="s3://patrick.poc", help="S3 bucket to use for work dir")
+    parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run, if possible.")
+    parser.add_argument("--generate_reports", action="store_true", help="Generate nexflow standard reports, such as the trace, dag, timeline, report files.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
     parser.add_argument("--configs", action="store", nargs="*", default=["s3://patrick.poc/nextflow/sample.config"], help="File(s) with nextflow parameters specific to this workflow")
     parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
     args = parser.parse_args()
 
-    # Define and create nextflow run directory
-    try:
-        root_dir = os.path.join("/nextflow/jobs", os.environ["AWS_BATCH_JOB_ID"], os.environ["AWS_BATCH_JOB_ATTEMPT"])
-        os.makedirs(root_dir, exist_ok=False)
-    except KeyError:
-        root_dir = os.path.join("/nextflow/jobs/test")
-        os.makedirs(root_dir, exist_ok=True)
-    os.chdir(root_dir)
+    # Initialize pipeline
+    pipeline_dir = os.path.join("/nextflow/workflows", str(args.workflow_id))
+    nextflow_dir = os.path.join(pipeline_dir, "nextflow")
+    os.makedirs(nextflow_dir, exist_ok=True)
+    os.chdir(nextflow_dir)
+
+    # Set work_bucket and publish dir
+    args.work_bucket = os.path.join(args.work_bucket, pipeline_dir.lstrip("/"))
+    if not args.publish_dir:
+        args.publish_dir = pipeline_dir
+
+    # Write default nextflow configuration file
+    create_default_config(args)
 
     # Download any additional configuration files (parameters, etc)
     if args.configs:
-        args.configs = download_configs(args, root_dir)
-
-    # Write default nextflow configuration file
-    create_default_config(args, root_dir)
+        args.configs = download_configs(args, pipeline_dir)
 
     # Run nextflow executable given the project and project parameters
     run_nextflow(args)
