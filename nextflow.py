@@ -121,7 +121,10 @@ def run_nextflow(args):
     # Print config
     log.info("Printing configuration")
     run_command(
-        executable + ["config"]
+        executable + [
+            "config",
+            args.project
+        ]
     )
 
     # Define project definition options
@@ -146,7 +149,7 @@ def run_nextflow(args):
 
     # Run worklow
     log.info("Running workflow")
-    # run_command(executable)
+    run_command(executable)
 
 
 def download_config(config_file):
@@ -158,13 +161,12 @@ def download_config(config_file):
     return path
 
 
-def verify_batch_queue(queue):
+def verify_batch_queue(args):
     # Check AWS Batch queue health
-    response = Batch().client.describe_job_queues(jobQueues=[queue])['jobQueues']
+    response = Batch(region=args.region).client.describe_job_queues(jobQueues=[args.queue])['jobQueues']
     if not response:
-        raise Exception(f"No queues available that match {queue}.")
+        raise Exception(f"No queues available that match {args.queue}.")
     assert ((response[0]['state'] == "ENABLED") and (response[0]['status'] == "VALID"))
-    return response[0]['jobQueueArn']
 
 
 if __name__ == "__main__":
@@ -175,7 +177,7 @@ if __name__ == "__main__":
     # Define arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow_id", required=True, help="Workflow ID.")
-    parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-b41f70740f8eab7", help="AWS Batch queue to use. Short name or ARN acceptable.")
+    parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-b41f70740f8eab7", help="AWS Batch queue ARN to use.")
     parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
     parser.add_argument("--max_retries", action="store", default=0, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
@@ -185,13 +187,13 @@ if __name__ == "__main__":
     parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run, if possible.")
     parser.add_argument("--generate_reports", action="store_true", help="Generate nexflow standard reports, such as the trace, dag, timeline, report files.")
     parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
-    parser.add_argument("--configs", action="store", nargs="*", default=["s3://patrick.poc/nextflow/sample.config"], help="File(s) with nextflow parameters specific to this workflow. Must be on a bucket in the same region as nextflow")
+    parser.add_argument("--configs", action="store", nargs="*", default=["s3://patrick.poc/nextflow/sample.config"], help="Ordered file(s) with nextflow parameters specific to this workflow.")
     parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
     args = parser.parse_args()
 
     # Verify job queue status and set region
-    args.queue = verify_batch_queue(args.queue)
     args.region = re.findall(r"arn:aws:batch:(.+-.+-\d+)", args.queue)[0]
+    verify_batch_queue(args)
 
     # Initialize pipeline variables and dirs
     pipeline_dir = os.path.join("/nextflow/workflows", str(args.workflow_id))
