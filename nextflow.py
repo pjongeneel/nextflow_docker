@@ -85,6 +85,9 @@ def download_repo(args):
     if os.path.isdir("project"):
         shutil.rmtree("project")
 
+    if not args.project.startswith("https://"):
+        raise Exception("Project must be a git repo which is of the form https://{host}/{repo_name}.git")
+
     if "github" in args.project:
         Repo.clone_from(url=args.project.replace("https://", f"https://{args.token}:x-oauth-basic@"), to_path="project", branch=args.revision, depth=1)
     elif "stash" in args.project:
@@ -174,6 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
     parser.add_argument("--max_retries", action="store", default=0, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
+    parser.add_argument("--token", action="store", require=True, help="Git access token.")
     parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
     parser.add_argument("--publish_dir", action="store", help="Directory to copy outputs to. Automatically set if left blank.")
     parser.add_argument("--work_bucket", action="store", default="s3://patrick.poc", help="S3 bucket to use for work dir")
