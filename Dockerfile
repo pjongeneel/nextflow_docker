@@ -13,7 +13,8 @@ RUN apt-get update \
 
 # Install python dependencies 
 RUN python3 -m pip install pip --upgrade \
-    && python3 -m pip install boto3 --upgrade
+    && python3 -m pip install boto3 --upgrade \
+    && python3 -m pip install GitPython --upgrade 
 
 # Install Nextflow executable
 WORKDIR /home

@@ -1,10 +1,12 @@
 # Imports
 import argparse
 from datetime import datetime
+from git import Repo
 import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 from S3Manager import Batch, S3
 
@@ -36,13 +38,13 @@ def create_default_config(args):
     # Setup config arguments
     config = {
         "report": {
-            "enabled": True
+            "enabled": args.generate_reports
         },
         "timeline": {
-            "enabled": True
+            "enabled": args.generate_reports
         },
         "trace": {
-            "enabled": True,
+            "enabled": args.generate_reports,
             "raw": True
         },
         "process": {
@@ -74,19 +76,24 @@ def create_default_config(args):
         "workDir": args.work_bucket
     }
 
-    # Write config file
-    # try:
-    #     nextflow_config_path = f"{os.environ['AWS_BATCH_JOB_ID']}.{os.environ['AWS_BATCH_JOB_ATTEMPT']}.config"
-    # except KeyError:
-    #     nextflow_config_path = "nextflow.config"
-    # with open(nextflow_config_path, "w") as fout:
-    #     write_keys(config, fout)
-
     with open("nextflow.config", "w") as fout:
         write_keys(config, fout)
 
-    with open("nextflow.json", "w") as fout:
-        json.dump(config, fout)
+
+def download_repo(args):
+    log.info(f"Cloning {args.project}")
+    if os.path.isdir("project"):
+        shutil.rmtree("project")
+
+    if "github" in args.project:
+        Repo.clone_from(url=args.project.replace("https://", f"https://{args.token}:x-oauth-basic@"), to_path="project", branch=args.revision, depth=1)
+    elif "stash" in args.project:
+        Repo.clone_from(url=args.project, to_path="project", branch=args.revision, depth=1, c=f"http.extraHeader=Authorization: Bearer {args.token}")
+
+    # "https://github.roche.com/jongenep/nextflow_project.git"
+    # Repo.clone_from(url="https://github.roche.com/jongenep/nextflow_project.git".replace("https://", f"https://{token}:x-oauth-basic@"), to_path="project", branch='v1', depth=1)
+    # "https://stash.intranet.roche.com/stash/scm/~jongenep/nextflow_project.git"
+    # Repo.clone_from(url="https://stash.intranet.roche.com/stash/scm/~jongenep/nextflow_project.git", to_path="project1", branch='master', depth=1, c=f"http.extraHeader=Authorization: Bearer {token}")
 
 
 def run_command(command):
@@ -102,17 +109,6 @@ def run_nextflow(args):
     if args.nextflow_version != "latest":
         os.environ["NXF_VER"] = args.nextflow_version
 
-    # Pull project
-    log.info("Pulling project repository")
-    run_command(
-        executable + [
-            "pull",
-            args.project,
-            "-revision",
-            args.revision
-        ]
-    )
-
     # Define config arguments
     config_declarator = "-C" if args.explicit_configs else "-c"
     for config in args.configs:
@@ -123,22 +119,19 @@ def run_nextflow(args):
     run_command(
         executable + [
             "config",
-            args.project
+            "project"
         ]
     )
 
     # Define project definition options
     executable.extend([
         "run",
-        args.project,
-        "-revision",
-        args.revision
+        "project"
     ])
 
     # Define optional parameters
     if not args.no_cache:
         executable.extend(["-resume"])
-
     if args.generate_reports:
         executable.extend([
             "-with-trace",
@@ -191,15 +184,15 @@ if __name__ == "__main__":
     parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
     args = parser.parse_args()
 
-    # Verify job queue status and set region
-    args.region = re.findall(r"arn:aws:batch:(.+?-.+?-\d+)", args.queue)[0]
-    verify_batch_queue(args)
-
     # Initialize pipeline variables and dirs
     pipeline_dir = os.path.join("/nextflow/workflows", str(args.workflow_id))
     nextflow_dir = os.path.join(pipeline_dir, "nextflow")
     os.makedirs(nextflow_dir, exist_ok=True)
     os.chdir(nextflow_dir)
+
+    # Verify job queue status and set region
+    args.region = re.findall(r"arn:aws:batch:(.+?-.+?-\d+)", args.queue)[0]
+    verify_batch_queue(args)
 
     # Set work_bucket and publish dir
     args.work_bucket = os.path.join(args.work_bucket, pipeline_dir.lstrip("/"))
@@ -212,6 +205,9 @@ if __name__ == "__main__":
     # Download any additional configuration files (parameters, etc)
     if args.configs:
         args.configs = map(download_config, args.configs)
+
+    # Pull project
+    download_repo(args)
 
     # Run nextflow executable given the project and project parameters
     run_nextflow(args)
