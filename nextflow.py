@@ -114,25 +114,24 @@ def download_repo(args):
     # Clone project
     log.info(f"Cloning {args.project}")
     if "github" in args.project:
-        Repo.clone_from(
+        repo = Repo.clone_from(
             url=args.project.replace("https://", f"https://{args.token}:x-oauth-basic@"),
             to_path="project",
-            branch=args.revision,
-            depth=1,
             multi_options=['--recurse-submodules']
         )
     elif "stash" in args.project:
         os.environ['GIT_SSL_NO_VERIFY'] = 'true'
-        Repo.clone_from(
+        repo = Repo.clone_from(
             url=args.project.replace("https://", f"https://x-token-auth:project@"),
             to_path="project",
-            branch=args.revision,
-            depth=1,
             multi_options=['--recurse-submodules'],
             c=f"http.extraHeader=Authorization: Bearer {args.token}"
         )
     else:
         raise Exception(f"Source URL {args.project} not currently supported!")
+
+    # Checkout correct revision
+    repo.git.checkout(args.revision)
 
 
 def run_command(command):
