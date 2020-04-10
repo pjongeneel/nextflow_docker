@@ -263,7 +263,7 @@ if __name__ == "__main__":
     # Define arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow_id", required=True, help="Workflow ID.")
-    parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-1c1ec2875e3b4c4", help="AWS Batch queue ARN to use.")
+    parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-309cc249183fcf1", help="AWS Batch queue ARN to use.")
     parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
     parser.add_argument("--max_retries", action="store", default=0, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
     parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
