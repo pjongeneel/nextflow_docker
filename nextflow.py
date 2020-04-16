@@ -229,7 +229,7 @@ def verify_batch_queue(args):
     """
 
     # Check AWS Batch queue health
-    response = Batch(region=args.region).client.describe_job_queues(jobQueues=[args.queue])['jobQueues']
+    response = Batch(region_name=args.region).client.describe_job_queues(jobQueues=[args.queue])['jobQueues']
     if not response:
         raise Exception(f"No queues available that match {args.queue}.")
     assert ((response[0]['state'] == "ENABLED") and (response[0]['status'] == "VALID"))
