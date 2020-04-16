@@ -1,14 +1,12 @@
 # Imports
 import argparse
-from datetime import datetime
+from aws import Batch, S3
 from git import Repo
-import json
 import logging
 import os
 import re
 import shutil
 import subprocess
-from S3Manager import Batch, S3
 
 # Define logger
 import logging
