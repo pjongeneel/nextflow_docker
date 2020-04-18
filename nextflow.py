@@ -236,7 +236,7 @@ def verify_batch_queue(args):
 
 
 def init_pipeline_directories(args):
-    """summary
+    """Create pipeline directory structure on EFS.
 
     Args:
         args (argparse.Namespace): Parsed arugments used for method.
