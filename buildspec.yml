@@ -4,6 +4,9 @@ phases:
   install:
     commands:
         - pip install --upgrade awscli
+        - pip install --upgrade sphinx
+        - pip install --upgrade sphinx_rtd_theme
+        - pip install --upgrade sphinx_copybutton
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
@@ -14,17 +17,24 @@ phases:
       - REPO=`basename ${CODEBUILD_SOURCE_REPO_URL} .git`
       - REPOSITORY_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO}
       - echo REPOSITORY_URI:${REPOSITORY_URI}
-      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-8)
-      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:=latest}
+      - PROJECT_BUCKET=${REPO//_}.app
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...  
       - docker build -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG        
+      - echo Building python docs...  
+      - cd docs/
+      - make html    
+      - cd ../    
   post_build:
     commands:
       - echo Build completed on `date`
       - echo Pushing the Docker image...
-      - docker push $REPOSITORY_URI:latest
-      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - docker push ${REPOSITORY_URI}:latest
+      - docker push ${REPOSITORY_URI}:${IMAGE_TAG}
+      - echo Uploading documentation to S3...
+      - aws s3 sync docs/_build/html/ s3://${PROJECT_BUCKET}/
+      - aws s3 sync docs/_build/html/ s3://${PROJECT_BUCKET}/${IMAGE_TAG}/

@@ -1,12 +1,9 @@
+
 Usage
 =====
 
-.. automodule:: aws.Batch
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 .. argparse::
-   :module: nextflow
+   :module: .nextflow
    :func: get_parser
-   :prog: fancytool
+   :prog: python3 nextflow.py
+

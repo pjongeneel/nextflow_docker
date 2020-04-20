@@ -251,30 +251,40 @@ def init_pipeline_directories(args):
 
     # Set work_bucket and publish dir
     args.work_bucket = os.path.join(args.work_bucket, pipeline_dir.lstrip("/"))
-    if not args.publish_dir:
-        args.publish_dir = pipeline_dir  # potentially change this with OS.environ variables AWS_BATCH_JOB_ID and AWS_BATCH_JOB_ATTEMPT
+    args.publish_dir = pipeline_dir  # potentially change this with OS.environ variables AWS_BATCH_JOB_ID and AWS_BATCH_JOB_ATTEMPT
+
+
+def get_parser():
+    # Define arguments
+    parser = argparse.ArgumentParser()
+
+    # Workflow specification
+    parser.add_argument("--workflow_id", required=True, help="Workflow ID. Needed for sample tracking.")
+    parser.add_argument("--project", action="store", required=True, help="Github repo containing nextflow workflow.")
+    parser.add_argument("--token", action="store", default="", help="Git access token. Necessary if git is private.")
+    parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
+    parser.add_argument("--configs", action="store", nargs="*", default=["s3://patrick.poc/nextflow/sample.config"], help="Ordered file(s) with nextflow parameters specific to this workflow.")
+    parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
+
+    # AWS batch deployment options
+    parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-309cc249183fcf1", help="AWS Batch queue ARN to use.")
+    parser.add_argument("--work_bucket", action="store", default="s3://patrick.poc", help="S3 bucket to use for work dir")
+
+    # Nextflow process options
+    parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
+    parser.add_argument("--generate_reports", action="store_true", help="Generate nexflow standard reports, such as the trace, dag, timeline, report files.")
+    parser.add_argument("--max_retries", action="store", default=0, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
+    parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
+    parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run, if possible.")
+
+    return parser
 
 
 if __name__ == "__main__":
     log.info("Entering Nextflow wrapper script")
 
     # Define arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--workflow_id", required=True, help="Workflow ID.")
-    parser.add_argument("--queue", default="arn:aws:batch:us-west-2:157538628385:job-queue/JobQueue-309cc249183fcf1", help="AWS Batch queue ARN to use.")
-    parser.add_argument("--error_strategy", action="store", default="retry", choices=["terminate", "finish", "ignore", "retry"], help="Define how an error condition is managed by the process.")
-    parser.add_argument("--max_retries", action="store", default=0, help="Specify the maximum number of times a process can fail when using the retry error strategy.")
-    parser.add_argument("--project", action="store", default="https://github.com/pjongeneel/nextflow_project.git", help="Github repo containing nextflow workflow.")
-    parser.add_argument("--token", action="store", default="", help="Git access token.")
-    parser.add_argument("--revision", action="store", default="master", help="Revision of the project to run (either a git branch, tag or commit SHA)")
-    parser.add_argument("--publish_dir", action="store", help="Directory to copy outputs to. Automatically set if left blank.")
-    parser.add_argument("--work_bucket", action="store", default="s3://patrick.poc", help="S3 bucket to use for work dir")
-    parser.add_argument("--no_cache", action="store_true", help="Don't use cache to resume run, if possible.")
-    parser.add_argument("--generate_reports", action="store_true", help="Generate nexflow standard reports, such as the trace, dag, timeline, report files.")
-    parser.add_argument("--nextflow_version", action="store", default="latest", help="Nextflow version to use.")
-    parser.add_argument("--configs", action="store", nargs="*", default=["s3://patrick.poc/nextflow/sample.config"], help="Ordered file(s) with nextflow parameters specific to this workflow.")
-    parser.add_argument("--explicit_configs", action="store_true", help="Use only the provided nextflow configuration files, and do not import default config settings from the project or this docker image.")
-    args = parser.parse_args()
+    args = get_parser().parse_args()
 
     # Initialize pipeline
     init_pipeline_directories(args)

@@ -7,9 +7,11 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: API Reference
+   :caption: Documentation
 
    Usage <Usage>
+   Running on AWS Batch <Running>
+   Building <Building>
 
 Indices and tables
 ==================
