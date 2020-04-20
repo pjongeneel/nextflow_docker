@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'nextflow.app'
+project = 'nextflowmaster.app'
 copyright = '2020, Patrick Jongeneel'
 author = 'Patrick Jongeneel'
 

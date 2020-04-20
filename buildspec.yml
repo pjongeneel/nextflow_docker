@@ -16,7 +16,6 @@ phases:
       - ACCOUNT_ID=`echo ${CODEBUILD_BUILD_ARN} | cut -f5 -d':'`
       - REPO=`basename ${CODEBUILD_SOURCE_REPO_URL} .git`
       - REPOSITORY_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO}
-      - echo REPOSITORY_URI:${REPOSITORY_URI}
       - IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:=latest}
       - PROJECT_BUCKET=${REPO//_}.app
   build:
